@@ -1,0 +1,25 @@
+# FM-Agent Load Test Configuration
+# Copy this file to config.yaml and fill in your values.
+# config.yaml is gitignored — never commit real credentials.
+
+target_url: "https://fm-agent.ai"
+
+# OpenRouter API key for triggering analysis
+# Each test user should have their own key if testing per-user isolation
+openrouter_api_key: "YOUR_OPENROUTER_API_KEY_HERE"
+
+# Model to use for code analysis
+model: "deepseek/deepseek-v3.2"
+
+# Simulated user think time range (seconds) between actions
+think_time_min: 1
+think_time_max: 3
+
+# Test file to upload (relative to test_files/)
+test_archive: "sample_project.zip"
+
+# Locust settings (used when running via CLI)
+locust:
+  users: 3
+  spawn_rate: 1
+  run_time: "2m"

@@ -1,0 +1,27 @@
+# Test accounts for fm-agent.ai load testing
+# Copy this file to accounts.yaml and fill in passwords.
+# accounts.yaml is gitignored — never commit real credentials.
+#
+# Naming convention:
+#   email:    fmtest.userN.loadtest@gmail.com
+#   nickname: fmtest-userN
+# Clearly fake — easy to identify and delete after go-live.
+
+accounts:
+  - id: user1
+    email: fmtest.user1.loadtest@gmail.com
+    nickname: fmtest-user1
+    password: "YOUR_PASSWORD_HERE"
+    openrouter_api_key: "YOUR_API_KEY_HERE"
+
+  - id: user2
+    email: fmtest.user2.loadtest@gmail.com
+    nickname: fmtest-user2
+    password: "YOUR_PASSWORD_HERE"
+    openrouter_api_key: "YOUR_API_KEY_HERE"
+
+  - id: user3
+    email: fmtest.user3.loadtest@gmail.com
+    nickname: fmtest-user3
+    password: "YOUR_PASSWORD_HERE"
+    openrouter_api_key: "YOUR_API_KEY_HERE"

@@ -49,19 +49,56 @@ cp accounts/accounts.example.yaml accounts/accounts.yaml
 bash test_files/fetch_samples.sh
 ```
 
-### 4. Run basic flow test (single user)
+### 4. Register test accounts (first time only)
 
 ```bash
-python scenarios/basic_flow.py
+python3 scripts/register.py --account user1
+python3 scripts/register.py --account user2
+python3 scripts/register.py --account user3
 ```
 
-### 5. Run load test with Locust (multi-user)
+### 5. Run load test with Locust
+
+Locust has two modes:
+
+#### Mode A — Web UI (recommended for first-time use)
 
 ```bash
 locust -f scenarios/basic_flow.py --host https://fm-agent.ai
 ```
 
-Then open http://localhost:8089 to configure and start the test.
+Then open **http://localhost:8089** in your browser. You will see:
+
+- **Number of users** — how many concurrent virtual users to simulate (e.g. `3`)
+- **Spawn rate** — how many users to start per second (e.g. `1`)
+- Click **Start** to begin the test
+
+The UI shows real-time stats: requests/sec, response times, failure rate.
+
+#### Mode B — Headless (no browser, runs and exits automatically)
+
+```bash
+locust -f scenarios/basic_flow.py --host https://fm-agent.ai \
+    --users 3 --spawn-rate 1 --run-time 2m --headless
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--users 3` | Simulate 3 concurrent users |
+| `--spawn-rate 1` | Start 1 new user per second |
+| `--run-time 2m` | Stop automatically after 2 minutes |
+| `--headless` | No browser UI, print results to terminal |
+
+#### What each "user" does
+
+Each simulated user runs this loop continuously:
+
+1. Register account (skipped if already exists)
+2. Login → get Bearer token
+3. **Upload a random test archive** (weight: 3× — tested most often)
+4. **Check job history** (weight: 1×)
+5. Wait 1–3 seconds (simulated think time)
+6. Repeat from step 3
 
 ---
 

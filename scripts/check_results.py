@@ -39,25 +39,21 @@ def load_accounts():
     return {a["id"]: a for a in data["accounts"]}
 
 
-def login(account: dict, base_url: str) -> Optional[str]:
-    resp = requests.post(
+def login(account: dict, base_url: str, session: requests.Session) -> bool:
+    resp = session.post(
         f"{base_url}/api/login",
         json={"email": account["email"], "password": account["password"]},
         timeout=15,
     )
     if resp.status_code == 200:
-        return resp.json().get("token")
+        return True
     print(f"  Login FAILED — {resp.status_code}: {resp.text[:200]}")
-    return None
+    return False
 
 
-def fetch_jobs(base_url: str, token: str) -> list:
+def fetch_jobs(base_url: str, session: requests.Session) -> list:
     """GET /api/jobs — history of completed jobs for this user."""
-    resp = requests.get(
-        f"{base_url}/api/jobs",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
-    )
+    resp = session.get(f"{base_url}/api/jobs", timeout=15)
     if resp.status_code == 200:
         return resp.json() if isinstance(resp.json(), list) else resp.json().get("jobs", [])
     print(f"  Jobs fetch FAILED — {resp.status_code}: {resp.text[:200]}")
@@ -105,11 +101,11 @@ def main():
     base_url = config["target_url"].rstrip("/")
 
     print(f"Checking jobs for {account['email']} ...")
-    token = login(account, base_url)
-    if not token:
+    session = requests.Session()
+    if not login(account, base_url, session):
         sys.exit(1)
 
-    jobs = fetch_jobs(base_url, token)
+    jobs = fetch_jobs(base_url, session)
     print(f"  Found {len(jobs)} job(s)")
 
     all_ok = True

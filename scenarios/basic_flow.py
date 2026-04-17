@@ -21,8 +21,9 @@ Usage:
 
 import yaml
 import random
+import itertools
 from pathlib import Path
-from locust import HttpUser, task, between, events
+from locust import HttpUser, task, between
 
 ROOT = Path(__file__).parent.parent
 CONFIG_FILE = ROOT / "config.yaml"
@@ -50,6 +51,8 @@ if not _archives:
         "Run: bash test_files/fetch_samples.sh"
     )
 
+_user_counter = itertools.count()
+
 
 class FMAgentUser(HttpUser):
     """Simulates a single user: register → login → upload → check history."""
@@ -60,10 +63,11 @@ class FMAgentUser(HttpUser):
     )
 
     def on_start(self):
-        self.account = _accounts[self.user_id % len(_accounts)]
-        self._token = None
+        self._idx = next(_user_counter)
+        self.account = _accounts[self._idx % len(_accounts)]
+        self._logged_in = False
         self._register()
-        self._token = self._login()
+        self._logged_in = self._login()
 
     # ------------------------------------------------------------------
     # Auth
@@ -86,8 +90,8 @@ class FMAgentUser(HttpUser):
             else:
                 resp.failure(f"Register failed: {resp.status_code} — {resp.text[:100]}")
 
-    def _login(self) -> str | None:
-        """POST /api/login → Bearer token stored on instance."""
+    def _login(self) -> bool:
+        """POST /api/login → session cookie stored in self.client.cookies."""
         with self.client.post(
             "/api/login",
             json={
@@ -99,15 +103,13 @@ class FMAgentUser(HttpUser):
         ) as resp:
             if resp.status_code == 200:
                 resp.success()
-                return resp.json().get("token")
+                return True
             else:
                 resp.failure(f"Login failed: {resp.status_code} — {resp.text[:100]}")
-                return None
+                return False
 
     def _auth_headers(self) -> dict:
-        if self._token:
-            return {"Authorization": f"Bearer {self._token}"}
-        return {}
+        return {}  # auth via cookie, no header needed
 
     # ------------------------------------------------------------------
     # Tasks
@@ -116,45 +118,47 @@ class FMAgentUser(HttpUser):
     @task(3)
     def upload_and_analyze(self):
         """POST /api/upload — core feature, tested 3x more than history check."""
-        if not self._token:
-            self._token = self._login()
-            if not self._token:
+        if not self._logged_in:
+            self._logged_in = self._login()
+            if not self._logged_in:
                 return
 
         archive = random.choice(_archives)
         api_key = self.account.get("openrouter_api_key") or _config.get("openrouter_api_key", "")
         model = _config.get("model", "deepseek/deepseek-v3.2")
 
-        with open(archive, "rb") as f:
-            with self.client.post(
-                "/api/upload",
-                files={"file": (archive.name, f, "application/octet-stream")},
-                data={"api_key": api_key, "model": model},
-                headers=self._auth_headers(),
-                catch_response=True,
-                name="POST /api/upload",
-            ) as resp:
-                if resp.status_code in (200, 201, 202):
-                    resp.success()
-                    # Note: actual analysis runs via /api/stream/<job_id> (EventSource)
-                    # We don't stream here — just verify the upload was accepted
-                else:
-                    resp.failure(f"Upload failed: {resp.status_code} — {resp.text[:100]}")
+        try:
+            with open(archive, "rb") as f:
+                with self.client.post(
+                    "/api/upload",
+                    files={"file": (archive.name, f, "application/octet-stream")},
+                    data={"api_key": api_key, "model": model},
+                    headers=self._auth_headers(),
+                    catch_response=True,
+                    name="POST /api/upload",
+                ) as resp:
+                    if resp.status_code in (200, 201, 202):
+                        resp.success()
+                    elif resp.status_code == 401:
+                        self._logged_in = False
+                        resp.failure("401 — session expired")
+                    else:
+                        resp.failure(f"Upload failed: {resp.status_code} — {resp.text[:100]}")
+        except Exception as e:
+            print(f"[upload_and_analyze] EXCEPTION: {type(e).__name__}: {e}")
 
     @task(1)
     def check_history(self):
         """GET /api/jobs — verify history isolation between users."""
         with self.client.get(
             "/api/jobs",
-            headers=self._auth_headers(),
             catch_response=True,
             name="GET /api/jobs",
         ) as resp:
             if resp.status_code == 200:
                 resp.success()
             elif resp.status_code == 401:
-                # Token expired — re-login
-                self._token = self._login()
+                self._logged_in = self._login()
                 resp.failure("401 — re-logged in")
             else:
                 resp.failure(f"History failed: {resp.status_code}")

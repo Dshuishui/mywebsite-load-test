@@ -36,24 +36,23 @@ def load_accounts():
     return {a["id"]: a for a in data["accounts"]}
 
 
-def login(account: dict, base_url: str) -> Optional[str]:
-    """POST /api/login → returns Bearer token or None."""
+def login(account: dict, base_url: str, session: requests.Session) -> bool:
+    """POST /api/login → session cookie stored in session object."""
     url = f"{base_url}/api/login"
-    resp = requests.post(
+    resp = session.post(
         url,
         json={"email": account["email"], "password": account["password"]},
         timeout=15,
     )
     if resp.status_code == 200:
-        token = resp.json().get("token")
-        print(f"  Logged in as {account['email']} — token: {token[:20]}...")
-        return token
+        print(f"  Logged in as {account['email']}")
+        return True
     else:
         print(f"  Login FAILED — {resp.status_code}: {resp.text[:300]}")
-        return None
+        return False
 
 
-def upload_file(archive_path: Path, account: dict, config: dict, base_url: str, token: str) -> Optional[str]:
+def upload_file(archive_path: Path, account: dict, config: dict, base_url: str, session: requests.Session) -> Optional[str]:
     """POST /api/upload with multipart form → returns job_id or None."""
     url = f"{base_url}/api/upload"
 
@@ -69,8 +68,7 @@ def upload_file(archive_path: Path, account: dict, config: dict, base_url: str, 
     with open(archive_path, "rb") as f:
         files = {"file": (archive_path.name, f, "application/octet-stream")}
         data = {"api_key": api_key, "model": model}
-        headers = {"Authorization": f"Bearer {token}"}
-        resp = requests.post(url, files=files, data=data, headers=headers, timeout=60)
+        resp = session.post(url, files=files, data=data, timeout=60)
 
     if resp.status_code in (200, 201, 202):
         job_id = resp.json().get("job_id")
@@ -98,11 +96,11 @@ def main():
     base_url = config["target_url"].rstrip("/")
     archive_path = ROOT / args.file
 
-    token = login(account, base_url)
-    if not token:
+    session = requests.Session()
+    if not login(account, base_url, session):
         sys.exit(1)
 
-    job_id = upload_file(archive_path, account, config, base_url, token)
+    job_id = upload_file(archive_path, account, config, base_url, session)
     sys.exit(0 if job_id else 1)
 
 
